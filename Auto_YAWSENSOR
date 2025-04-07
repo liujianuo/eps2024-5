@@ -1,0 +1,161 @@
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.hardware.IMU;
+
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.AngularVelocity;
+import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
+import org.firstinspires.ftc.robotcore.external.navigation.Orientation;
+import org.firstinspires.ftc.robotcore.external.navigation.AxesReference;
+import org.firstinspires.ftc.robotcore.external.navigation.AxesOrder;
+import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;  
+
+import java.text.DecimalFormat;
+import com.qualcomm.robotcore.hardware.TouchSensor;
+import com.qualcomm.robotcore.util.ElapsedTime;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.CRServo;
+import com.qualcomm.robotcore.hardware.Servo;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
+
+@Autonomous(name="Yaw Debug")
+public class Auto_YAWSENSOR extends LinearOpMode{
+    // Define all motors
+    DcMotor rightback;
+    DcMotor leftback;
+    DcMotor rightfront;
+    DcMotor leftfront;
+    Servo intake;
+    DcMotor linear;
+    Servo gripR;
+    Servo gripL;
+    TouchSensor front;
+    CRServo triangle;
+    IMU imu;
+
+    // defined constants
+    protected static final double GOBILDA = 537.7; // tick/rev of gobilda and tetrix dc's
+    protected static final double TETRIX = 1440;
+    protected static final double XSENSITIVITY = 0.5;
+    protected static final double YSENSITIVITY = -0.5;
+    protected static final double RSENSITIVITY = 0.5;
+    protected static final double ARMSENSITIVITY = 0.5;
+    protected static final double ROTORSENSITIVITY = 0.9;
+    protected static final double SLIDESENSITIVITY = -0.7;
+    protected static final double GROPEN = 0.4;
+    protected static final double GRCLOSED = 0;
+    protected static final double GLOPEN = 0.1;
+    protected static final double GLCLOSED = 0.5;
+    protected static final double KP = 0.01;
+    protected static final double KD = 0;
+    protected static final double KI = 0.001;
+
+    protected static final double KPA = 0.1;
+    protected static final double KDA = 0.001;
+    protected static final double KIA = 0.006;
+
+    double setangle;
+
+    static int state = 0;
+    static boolean lockout = false;
+    boolean doubleinput = false;
+
+    //------------------------------------------------//
+    //This Function is to apply drive values to motors//
+    //------------------------------------------------//
+    
+    public ElapsedTime timer = new ElapsedTime();
+
+    public void pause(double time, String msg){
+        timer.reset();
+        while(timer.time() < time && opModeIsActive()){
+            telemetry.addData("waiting", " "+timer.time() + " / " + time);
+            telemetry.addData("action", msg);
+            telemetry.update();
+        }
+    }
+
+    /*
+    public void sleepmilli(long milli){
+        try {
+            Thread.sleep(milli);
+        } catch (Exception e){}
+    }
+    */
+
+    public void closegrip(){
+        gripR.setPosition(GRCLOSED);
+        gripL.setPosition(GLCLOSED);
+    }
+
+    public void opengrip(){
+        gripR.setPosition(GROPEN);
+        gripL.setPosition(GLOPEN);
+    }
+
+    public double getangle(){
+        double raw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
+        if(raw <= -90 && raw >= -180){
+            return (raw + 360);
+        }
+        else return raw;
+    }
+
+    public void runOpMode(){
+        // Map all motors
+        rightback = hardwareMap.dcMotor.get("RIGHTBACK");
+        leftback = hardwareMap.dcMotor.get("LEFTBACK");
+        rightfront = hardwareMap.dcMotor.get("RIGHTFRONT");
+        leftfront = hardwareMap.dcMotor.get("LEFTFRONT");
+        intake = hardwareMap.servo.get("PINCHER");
+        linear = hardwareMap.dcMotor.get("LINSLIDE");
+        gripR = hardwareMap.servo.get("GR");
+        gripL = hardwareMap.servo.get("GL");
+        front = hardwareMap.touchSensor.get("TOUCH");
+        triangle = hardwareMap.crservo.get("TRIANGLE");
+
+        // Negate direction for opposite drive motors
+        leftback.setDirection(DcMotorSimple.Direction.FORWARD);
+        leftfront.setDirection(DcMotorSimple.Direction.FORWARD);
+        rightback.setDirection(DcMotorSimple.Direction.REVERSE);
+        rightfront.setDirection(DcMotorSimple.Direction.REVERSE);
+        linear.setDirection(DcMotorSimple.Direction.FORWARD);
+        leftback.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        leftfront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        rightback.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        rightfront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        // Initialise arm motors
+        //gripper.setDirection(Servo.Direction.FORWARD);
+        // Define Motor Values
+
+        RevHubOrientationOnRobot.LogoFacingDirection logoDirection = RevHubOrientationOnRobot.LogoFacingDirection.FORWARD;
+        RevHubOrientationOnRobot.UsbFacingDirection  usbDirection  = RevHubOrientationOnRobot.UsbFacingDirection.UP;
+
+        RevHubOrientationOnRobot orientationOnRobot = new RevHubOrientationOnRobot(logoDirection, usbDirection);
+
+        // Now initialize the IMU with this mounting orientation
+        // Note: if you choose two conflicting directions, this initialization will cause a code exception.
+        imu.initialize(new IMU.Parameters(orientationOnRobot));
+
+        telemetry.addData("Mode", "calibrating...");
+        telemetry.update();
+
+        while (!imu.isGyroCalibrated())
+        {
+
+        }
+
+        setangle = 0.0;
+
+        telemetry.addData("Mode", "waiting for start");
+        telemetry.addData("imu calib status", imu.getCalibrationStatus().toString());
+        telemetry.update();
+
+        while(opModeIsActive()){
+            telemetry.addData("Yaw", getangle());
+            telemetry.update();
+        }
+        
+        //*/
+    }
+}
